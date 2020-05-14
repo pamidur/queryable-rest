@@ -16,7 +16,7 @@ namespace QRest.Core.Compilation
         public static TermCompiler Default { get; } =
             new TermCompiler(
                 new AssemblingVisitor(
-                    new DynamicContainerFactory(),
+                    new EmitContainerFactory(),
                     new DefaultTypeConverter(CultureInfo.InvariantCulture, parseStrings: true, assumeDateTimeKind: DateTimeKind.Utc),
                     allowUncompletedQueries: false,
                     terminateSelects: true
@@ -46,14 +46,13 @@ namespace QRest.Core.Compilation
 
         public Expression<Func<TRoot, object>> Assemble<TRoot>(ITerm rootTerm)
         {
-            ConstantExpression compiled = null;
-            IReadOnlyList<ConstantExpression> constants = null;
-
             var rootType = typeof(TRoot);
 
             var root = Expression.Parameter(rootType, "r");
-            var cacheKey = $"{rootType.ToString()}++{rootTerm.KeyView}";
+            var cacheKey = $"{rootType}++{rootTerm.ViewKey}";
 
+            IReadOnlyList<ConstantExpression> constants;
+            ConstantExpression compiled;
             if (_useCompilerCache && _cache.TryGetValue(cacheKey, out var @delegate))
             {
                 compiled = @delegate;
@@ -63,7 +62,7 @@ namespace QRest.Core.Compilation
             {
                 var (lambda, consts) = _assemblingVisitor.Assemble(rootTerm, root, typeof(object));
 
-                constants = consts;
+                constants = consts.Select(c => c.Value).ToArray();
                 compiled = Expression.Constant(lambda.Compile());
 
                 if (_useCompilerCache)

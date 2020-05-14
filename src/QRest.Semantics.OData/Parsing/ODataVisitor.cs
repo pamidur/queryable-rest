@@ -24,7 +24,7 @@ namespace QRest.Semantics.OData.Parsing
         public override ITerm VisitParse([NotNull] ParseContext context)
         {
             if (context.children.Count < 2)
-                return new ODataTermContainer { Data = new MethodTerm(OperationsMap.Context) };
+                return new ODataTermContainer { Data = ContextTerm.Root };
 
             return Visit(context.queryOptions());
         }
@@ -41,7 +41,7 @@ namespace QRest.Semantics.OData.Parsing
 
         private ITerm BuildTerms(List<ITerm> sortedLambdas)
         {
-            ITerm dataOut = null;
+            ITerm dataOut = ContextTerm.Root;
             ITerm countOut = null;
 
             if (sortedLambdas.Any())
@@ -64,7 +64,7 @@ namespace QRest.Semantics.OData.Parsing
                     dataOut = new SequenceTerm(new[] { dataOut }.Concat(sortedLambdas).ToArray());
             }
 
-            return new ODataTermContainer() { Data = dataOut ?? new MethodTerm(OperationsMap.Context), Count = countOut };
+            return new ODataTermContainer() { Data = dataOut ?? ContextTerm.Root, Count = countOut };
         }
 
         private static QueryOptionContext GetContext<T>(IEnumerable<QueryOptionContext> opts)
@@ -83,14 +83,14 @@ namespace QRest.Semantics.OData.Parsing
         public override ITerm VisitSelect([NotNull] SelectContext context)
         {
             var selectArgs = context.children.OfType<SelectItemContext>().Select(c => Visit(c)).ToList();
-            var select = new MethodTerm(_operations.Select, new[] { new LambdaTerm( new MethodTerm(OperationsMap.New, selectArgs.ToArray())) });
+            var select = new MethodTerm(_operations.Select, new[] { new LambdaTerm(new MethodTerm(OperationsMap.New, selectArgs.ToArray())) });
             return select;
         }
 
         public override ITerm VisitSelectItem([NotNull] SelectItemContext context)
         {
             return new SequenceTerm(
-                new MethodTerm(OperationsMap.Root),
+                ContextTerm.Root, 
                 new PropertyTerm(context.GetText())
             );
         }
@@ -137,13 +137,13 @@ namespace QRest.Semantics.OData.Parsing
             if (string.IsNullOrEmpty(_currentContext) || (context.prefix?.Text?.Equals(_currentContext) ?? false))
                 return new SequenceTerm
                 (
-                    new MethodTerm(OperationsMap.Root),
+                    ContextTerm.Root,
                     new PropertyTerm(context.val.Text)
                 );
             else
                 return new SequenceTerm
                 (
-                    new MethodTerm(OperationsMap.Root)
+                    ContextTerm.Root
                 );
         }
 
@@ -215,7 +215,7 @@ namespace QRest.Semantics.OData.Parsing
 
             return new SequenceTerm(
                 funcRoot
-                ,new MethodTerm(func.Operation, parameters.Skip(1).ToArray())
+                , new MethodTerm(func.Operation, parameters.Skip(1).ToArray())
                 );
         }
 
@@ -241,24 +241,24 @@ namespace QRest.Semantics.OData.Parsing
 
         public override ITerm VisitOrderbyItem([NotNull] OrderbyItemContext context)
         {
-            var order = context.ChildCount > 1 ?
-                Visit(context.children[1])
-                : new MethodTerm(OperationsMap.Context);
+            var ordersq = new SequenceTerm(
+                ContextTerm.Root,
+                new PropertyTerm(context.children[0].GetText())
+                );
 
-            return new SequenceTerm(
-                new MethodTerm(OperationsMap.Root),
-                new PropertyTerm(context.children[0].GetText()),
-                order
-            );
+            if (context.ChildCount > 1)
+                ordersq = ordersq.Append(Visit(context.children[1]));
+
+            return ordersq;
         }
 
         public override ITerm VisitOrder([NotNull] OrderContext context)
         {
-            MethodTerm method;
+            ITerm method;
             switch (context.GetText())
             {
                 case "asc":
-                    method = new MethodTerm(OperationsMap.Context);
+                    method = null;
                     break;
                 case "desc":
                     method = new MethodTerm(OperationsMap.Reverse);
@@ -300,7 +300,7 @@ namespace QRest.Semantics.OData.Parsing
 
             var field = new SequenceTerm
                 (
-                    new MethodTerm(OperationsMap.Root),
+                    ContextTerm.Root,
                     new PropertyTerm(context.fld.Text)
                 );
 
